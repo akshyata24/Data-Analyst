@@ -1,0 +1,483 @@
+FindDefault (Prediction of Credit Card fraud)
+Problem Statement:
+A credit card is one of the most used financial products to make online purchases and payments. Though the Credit cards can be a convenient way to manage your finances, they can also be risky. Credit card fraud is the unauthorized use of someone else's credit card or credit card information to make purchases or withdraw cash.
+It is important that credit card companies are able to recognize fraudulent credit card transactions so that customers are not charged for items that they did not purchase. 
+The dataset contains transactions made by credit cards in September 2013 by European cardholders. This dataset presents transactions that occurred in two days, where we have 492 frauds out of 284,807 transactions. The dataset is highly unbalanced, the positive class (frauds) account for 0.172% of all transactions.
+We have to build a classification model to predict whether a transaction is fraudulent or not.
+
+
+
+import pandas as pd
+df = pd.read_csv('credit_card_fraud_dataset.csv')
+print(df.describe())
+
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+sns.countplot(x='Class', data=df)
+plt.show()
+
+correlation_matrix = df.corr()
+sns.heatmap(correlation_matrix, annot=True, cmap='coolwarm')
+plt.show()
+
+
+df[['Amount', 'Time']].hist(bins=20, figsize=(10, 6))
+plt.show()
+
+plt.plot(df['Time'], df['Amount'])
+plt.xlabel('Time')
+plt.ylabel('Amount')
+plt.show()
+
+
+sns.boxplot(x='Class', y='Amount', data=df)
+plt.show()
+
+sns.pairplot(df, hue='Class')
+plt.show()
+
+
+Data Cleaning:
+
+print(df.isnull().sum())
+df['Column_name'].fillna(df['Column_name'].mean(), inplace=True)
+from sklearn.preprocessing import StandardScaler
+
+scaler = StandardScaler()
+df[['Amount', 'Time']] = scaler.fit_transform(df[['Amount', 'Time']])
+sns.boxplot(x='Class', y='Amount', data=df)
+plt.show()
+
+from scipy.stats import zscore
+df['Amount_Zscore'] = zscore(df['Amount'])
+df_no_outliers = df[(df['Amount_Zscore'] > -3) & (df['Amount_Zscore'] < 3)]
+
+
+from imblearn.over_sampling import SMOTE
+smote = SMOTE(sampling_strategy='auto')
+X_resampled, y_resampled = smote.fit_resample(X, y)
+df.drop(['Column_name'], axis=1, inplace=True)
+
+
+
+Dealing with Imbalanced data: 
+
+from imblearn.over_sampling import SMOTE
+from sklearn.model_selection import train_test_split
+X = df.drop('Class', axis=1)
+y = df['Class']
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+smote = SMOTE(sampling_strategy='auto', random_state=42)
+X_train_resampled, y_train_resampled = smote.fit_resample(X_train, y_train)
+
+
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import classification_report
+rf_model = RandomForestClassifier(n_estimators=100, random_state=42)
+rf_model.fit(X_train_resampled, y_train_resampled)
+y_pred = rf_model.predict(X_test)
+print(classification_report(y_test, y_pred))
+
+
+
+from sklearn.linear_model import LogisticRegression
+lr_model = LogisticRegression(class_weight='balanced', random_state=42)
+lr_model.fit(X_train, y_train)
+y_pred_lr = lr_model.predict(X_test)
+print(classification_report(y_test, y_pred_lr))
+
+
+from sklearn.metrics import precision_score, recall_score, f1_score
+
+print("Precision: ", precision_score(y_test, y_pred))
+print("Recall: ", recall_score(y_test, y_pred))
+print("F1 Score: ", f1_score(y_test, y_pred))
+
+
+Feature Engineering:
+df['Hour'] = df['Time'].apply(lambda x: divmod(x, 3600)[0] % 24)
+df['DayOfWeek'] = df['Time'].apply(lambda x: divmod(x, 86400)[0] 
+% 7)
+from sklearn.preprocessing import StandardScaler
+
+scaler = StandardScaler()
+df['Amount_Normalized'] = scaler.fit_transform(df[['Amount']])
+df['TransactionsLastHour'] = df.groupby('CardNumber')['Time'].transform(lambda x: x.rolling(window=3600).count())
+df['TransactionVelocity'] = df.groupby('CardNumber')['Time'].diff()
+
+df['MeanTransactionAmount'] = df.groupby('CardNumber')['Amount'].transform('mean')
+df['FraudPercentage'] = df.groupby('CardNumber')['Class'].transform('mean')
+df['Amount_Velocity_Ratio'] = df['Amount'] / df['TransactionVelocity']
+pca = PCA(n_components=5)
+reduced_features = pca.fit_transform(df.drop(['Class'], axis=1))
+df['Amount_Outlier'] = (df['Amount'] > df['Amount'].mean() + 3 * df['Amount'].std()).astype(int)
+from scipy.stats import entropy
+
+df['Entropy_Category'] = df.groupby('Category')['Class'].transform(lambda x: entropy(x.value_counts(normalize=True)))
+
+
+Model Selection: 
+from sklearn.linear_model import LogisticRegression
+model = LogisticRegression()
+from sklearn.ensemble import RandomForestClassifier
+model = RandomForestClassifier(n_estimators=100, random_state=42)
+from xgboost import XGBClassifier
+model = XGBClassifier(n_estimators=100, random_state=42)
+from sklearn.svm import SVC
+model = SVC(kernel='linear', C=1.0, random_state=42)
+
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense
+
+model = Sequential()
+model.add(Dense(64, activation='relu', input_dim=X_train.shape[1]))
+model.add(Dense(1, activation='sigmoid'))
+model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+from sklearn.ensemble import IsolationForest
+model = IsolationForest(contamination=0.01, random_state=42)
+
+
+from sklearn.ensemble import VotingClassifier
+
+model1 = RandomForestClassifier(n_estimators=100, random_state=42)
+model2 = XGBClassifier(n_estimators=100, random_state=42)
+
+model = VotingClassifier(estimators=[('rf', model1), ('xgb', model2)], voting='soft')
+
+
+Model Training: 
+
+from sklearn.model_selection import train_test_split
+
+# Assuming 'df' is your dataframe
+X = df.drop('Class', axis=1)
+y = df['Class']
+
+# Split the data into training and testing sets
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+from sklearn.ensemble import RandomForestClassifier
+
+# Create a Random Forest classifier
+model = RandomForestClassifier(n_estimators=100, random_state=42)
+
+model.fit(X_train, y_train)
+
+
+from sklearn.model_selection import GridSearchCV
+
+# Define hyperparameters and their potential values
+param_grid = {'n_estimators': [50, 100, 200], 'max_depth': [None, 10, 20]}
+
+# Perform grid search
+grid_search = GridSearchCV(model, param_grid, cv=5, scoring='f1')
+grid_search.fit(X_train, y_train)
+
+# Get the best hyperparameters
+best_params = grid_search.best_params_
+
+
+from sklearn.model_selection import GridSearchCV
+
+# Define hyperparameters and their potential values
+param_grid = {'n_estimators': [50, 100, 200], 'max_depth': [None, 10, 20]}
+
+# Perform grid search
+grid_search = GridSearchCV(model, param_grid, cv=5, scoring='f1')
+grid_search.fit(X_train, y_train)
+
+# Get the best hyperparameters
+best_params = grid_search.best_params_
+
+
+y_pred = model.predict(X_test)
+
+# Evaluate the model's performance
+from sklearn.metrics import classification_report
+
+print(classification_report(y_test, y_pred))
+
+
+from sklearn.model_selection import cross_val_score
+
+# Perform cross-validation
+scores = cross_val_score(model, X_train, y_train, cv=5, scoring='f1')
+
+# Print the average F1 score across folds
+print("Cross-validated F1 Score:", scores.mean())
+
+	Model Validation: 
+	
+	from sklearn.model_selection import train_test_split
+
+# Assuming 'df' is your dataframe
+X = df.drop('Class', axis=1)
+y = df['Class']
+
+# Split the data into training and testing sets
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+
+from sklearn.ensemble import RandomForestClassifier
+
+# Create a Random Forest classifier
+model = RandomForestClassifier(n_estimators=100, random_state=42)
+
+model.fit(X_train, y_train)
+
+
+
+from sklearn.model_selection import GridSearchCV
+
+# Define hyperparameters and their potential values
+param_grid = {'n_estimators': [50, 100, 200], 'max_depth': [None, 10, 20]}
+
+# Perform grid search
+grid_search = GridSearchCV(model, param_grid, cv=5, scoring='f1')
+grid_search.fit(X_train, y_train)
+
+# Get the best hyperparameters
+best_params = grid_search.best_params_
+
+
+# Make predictions on the test set
+y_pred = model.predict(X_test)
+
+# Evaluate the model's performance
+from sklearn.metrics import classification_report
+
+print(classification_report(y_test, y_pred))
+
+
+from sklearn.model_selection import cross_val_score
+
+# Perform cross-validation
+scores = cross_val_score(model, X_train, y_train, cv=5, scoring='f1')
+
+# Print the average F1 score across folds
+print("Cross-validated F1 Score:", scores.mean())
+
+
+# Assuming 'model' is your trained model
+y_pred = model.predict(X_test)
+
+# Evaluate the model's performance on the test set
+from sklearn.metrics import classification_report
+
+print(classification_report(y_test, y_pred))
+
+
+from sklearn.metrics import confusion_matrix
+
+# Compute confusion matrix
+cm = confusion_matrix(y_test, y_pred)
+
+# Display the confusion matrix
+print("Confusion Matrix:")
+print(cm)
+
+
+from sklearn.metrics import roc_curve, auc
+import matplotlib.pyplot as plt
+
+# Get predicted probabilities for the positive class
+y_prob = model.predict_proba(X_test)[:, 1]
+
+# Compute ROC curve and AUC
+fpr, tpr, thresholds = roc_curve(y_test, y_prob)
+auc_value = auc(fpr, tpr)
+
+# Plot ROC curve
+plt.figure(figsize=(8, 6))
+plt.plot(fpr, tpr, color='darkorange', lw=2, label=f'AUC = {auc_value:.2f}')
+plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
+plt.xlabel('False Positive Rate')
+plt.ylabel('True Positive Rate')
+plt.title('ROC Curve')
+plt.legend(loc='lower right')
+plt.show()
+
+print(f"AUC-ROC: {auc_value:.2f}")
+
+
+from sklearn.metrics import precision_recall_curve, auc
+import matplotlib.pyplot as plt
+
+# Compute Precision-Recall curve and AUC-PR
+precision, recall, _ = precision_recall_curve(y_test, y_prob)
+auc_pr = auc(recall, precision)
+
+# Plot Precision-Recall curve
+plt.figure(figsize=(8, 6))
+plt.plot(recall, precision, color='darkorange', lw=2, label=f'AUC-PR = {auc_pr:.2f}')
+plt.xlabel('Recall')
+plt.ylabel('Precision')
+plt.title('Precision-Recall Curve')
+plt.legend(loc='upper right')
+plt.show()
+
+print(f"AUC-PR: {auc_pr:.2f}")
+
+# Example: Adjust threshold to achieve desired precision or recall
+desired_precision = 0.95
+threshold = thresholds[np.argmax(precision >= desired_precision)]
+
+# Use the adjusted threshold for predictions
+y_pred_adjusted = (y_prob >= threshold).astype(int)
+
+
+from sklearn.model_selection import cross_val_score
+
+# Perform cross-validation
+scores = cross_val_score(model, X, y, cv=5, scoring='f1')
+
+# Print the average F1 score across folds
+print("Cross-validated F1 Score:", scores.mean())
+
+
+
+Model validation is a crucial step to assess the performance of your trained model on data that it hasn't seen before. This step helps estimate the model's ability to generalize to new, unseen data and identify potential issues like overfitting. Here's a guide on how to perform model validation:
+
+Evaluate on Test Set:
+
+Use the trained model to make predictions on the test set and assess its performance using appropriate metrics.
+python
+Copy code
+# Assuming 'model' is your trained model
+y_pred = model.predict(X_test)
+
+# Evaluate the model's performance on the test set
+from sklearn.metrics import classification_report
+
+print(classification_report(y_test, y_pred))
+Confusion Matrix:
+
+Examine the confusion matrix to understand how well the model is performing in terms of true positives, true negatives, false positives, and false negatives.
+python
+Copy code
+from sklearn.metrics import confusion_matrix
+
+# Compute confusion matrix
+cm = confusion_matrix(y_test, y_pred)
+
+# Display the confusion matrix
+print("Confusion Matrix:")
+print(cm)
+ROC Curve and AUC-ROC:
+
+Plot the Receiver Operating Characteristic (ROC) curve and calculate the Area Under the ROC Curve (AUC-ROC). This is particularly relevant for imbalanced datasets.
+python
+Copy code
+from sklearn.metrics import roc_curve, auc
+import matplotlib.pyplot as plt
+
+# Get predicted probabilities for the positive class
+y_prob = model.predict_proba(X_test)[:, 1]
+
+# Compute ROC curve and AUC
+fpr, tpr, thresholds = roc_curve(y_test, y_prob)
+auc_value = auc(fpr, tpr)
+
+# Plot ROC curve
+plt.figure(figsize=(8, 6))
+plt.plot(fpr, tpr, color='darkorange', lw=2, label=f'AUC = {auc_value:.2f}')
+plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
+plt.xlabel('False Positive Rate')
+plt.ylabel('True Positive Rate')
+plt.title('ROC Curve')
+plt.legend(loc='lower right')
+plt.show()
+
+print(f"AUC-ROC: {auc_value:.2f}")
+Precision-Recall Curve and AUC-PR:
+
+Plot the Precision-Recall curve and calculate the Area Under the Precision-Recall Curve (AUC-PR), which is especially informative for imbalanced datasets.
+python
+Copy code
+from sklearn.metrics import precision_recall_curve, auc
+import matplotlib.pyplot as plt
+
+# Compute Precision-Recall curve and AUC-PR
+precision, recall, _ = precision_recall_curve(y_test, y_prob)
+auc_pr = auc(recall, precision)
+
+# Plot Precision-Recall curve
+plt.figure(figsize=(8, 6))
+plt.plot(recall, precision, color='darkorange', lw=2, label=f'AUC-PR = {auc_pr:.2f}')
+plt.xlabel('Recall')
+plt.ylabel('Precision')
+plt.title('Precision-Recall Curve')
+plt.legend(loc='upper right')
+plt.show()
+
+print(f"AUC-PR: {auc_pr:.2f}")
+Adjust Decision Threshold (Optional):
+
+Depending on the specific requirements, you may need to adjust the decision threshold of the model to achieve a balance between precision and recall.
+python
+Copy code
+# Example: Adjust threshold to achieve desired precision or recall
+desired_precision = 0.95
+threshold = thresholds[np.argmax(precision >= desired_precision)]
+
+# Use the adjusted threshold for predictions
+y_pred_adjusted = (y_prob >= threshold).astype(int)
+Cross-Validation (Optional):
+
+If you haven't performed cross-validation during the model training process, consider doing it at this stage to obtain more robust performance estimates.
+python
+Copy code
+from sklearn.model_selection import cross_val_score
+
+# Perform cross-validation
+scores = cross_val_score(model, X, y, cv=5, scoring='f1')
+
+# Print the average F1 score across folds
+print("Cross-validated F1 Score:", scores.mean())
+Model Interpretability:
+
+If possible, interpret the model's decisions. For example, analyze feature importance to understand which features contribute most to predictions.
+python
+Copy code
+# Example for Random Forest feature importance
+feature_importance = model.feature_importances_
+feature_names = X.columns
+
+# Create a dataframe with feature names and importance scores
+importance_df = pd.DataFrame({'Feature': feature_names, 'Importance': feature_importance})
+
+# Sort features by importance
+importance_df = importance_df.sort_values(by='Importance', ascending=False)
+
+# Display the top features
+print(importance_df.head())
+
+
+Model Deployment: 
+
+
+# Example in Python using pickle
+import pickle
+
+# Serialize and save the model
+with open('model.pkl', 'wb') as file:
+    pickle.dump(model, file)
+	
+	
+	# Example Dockerfile
+FROM python:3.8
+
+# Install required dependencies
+RUN pip install scikit-learn
+
+# Copy model and prediction script
+COPY model.pkl /app/model.pkl
+COPY predict.py /app/predict.py
+
+# Set the working directory
+WORKDIR /app
+
+# Command to run when the container starts
+CMD ["python", "predict.py"]
